@@ -1,0 +1,22 @@
+{
+  "name": "skystarry-plugins",
+  "owner": {
+    "name": "minsung",
+    "email": "minsung@skystarry.xyz"
+  },
+  "plugins": [
+    {
+      "name": "kanban-agent",
+      "source": "./plugins/kanban-agent",
+      "description": "SQLite-backed kanban board for multi-agent workflows. Planner and implementer subagents coordinate via shared task state with hook-based change propagation.",
+      "version": "1.0.0",
+      "author": {
+        "name": "minsung",
+        "email": "minsung@skystarry.xyz"
+      },
+      "homepage": "https://github.com/vmintf/skystarry-plugins",
+      "keywords": ["kanban", "multi-agent", "sqlite", "workflow"],
+      "category": "productivity"
+    }
+  ]
+}

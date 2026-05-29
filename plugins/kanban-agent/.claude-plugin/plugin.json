@@ -1,0 +1,27 @@
+{
+  "name": "kanban-agent",
+  "version": "1.0.0",
+  "description": "SQLite-backed kanban board for multi-agent workflows. Parallel implementers each run in isolated git worktrees. Planner, implementer, reviewer, QA, and overseer coordinate via shared DB. QA validates through execution and screenshots only.",
+  "author": {
+    "name": "minsung",
+    "email": "minsung@skystarry.xyz"
+  },
+  "homepage": "https://github.com/vmintf/skystarry-plugins",
+  "keywords": ["kanban", "multi-agent", "sqlite", "workflow", "planner", "implementer", "qa"],
+  "category": "productivity",
+  "skills": "./skills/",
+  "commands": "./commands/",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": ".kanban/kanban.db",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sqlite3 -column -header .kanban/kanban.db \"SELECT changed_at, table_name, record_id, field, old_value, new_value FROM change_log ORDER BY changed_at DESC LIMIT 5;\""
+          }
+        ]
+      }
+    ]
+  }
+}

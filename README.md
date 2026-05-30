@@ -1,3 +1,4 @@
+[![Listed on ClaudePluginHub](https://www.claudepluginhub.com/badge/vmintf-kanban-agent-plugins-kanban-agent)](https://www.claudepluginhub.com/plugins/vmintf-kanban-agent-plugins-kanban-agent?ref=badge)
 # skystarry-plugins
 
 Claude Code plugin marketplace by [minsung@skystarry.xyz](mailto:minsung@skystarry.xyz).

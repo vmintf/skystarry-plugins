@@ -8,8 +8,8 @@
     {
       "name": "kanban-agent",
       "source": "./plugins/kanban-agent",
-      "description": "SQLite-backed kanban board for multi-agent workflows. Planner and implementer subagents coordinate via shared task state with hook-based change propagation.",
-      "version": "1.0.0",
+      "description": "A shared kanban board that lets multiple Claude agents plan, implement, review, and ship work in parallel — without you holding everything together.",
+      "version": "1.0.1",
       "author": {
         "name": "minsung",
         "email": "minsung@skystarry.xyz"

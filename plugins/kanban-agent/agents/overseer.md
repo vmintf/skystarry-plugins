@@ -43,9 +43,9 @@ SELECT agent_name, summary, updated_at FROM agent_memory
 WHERE agent_name NOT LIKE '%#%'
 ORDER BY updated_at DESC;
 
--- Per-task implementer session memories (recent sessions first)
+-- Per-task session memories across all roles (implementer, reviewer, qa — recent first)
 SELECT agent_name, summary, updated_at FROM agent_memory
-WHERE agent_name LIKE 'implementer#%'
+WHERE agent_name LIKE '%#%'
 ORDER BY updated_at DESC
 LIMIT 20;
 ```

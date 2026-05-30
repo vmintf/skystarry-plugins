@@ -9,8 +9,18 @@
 --
 -- agent_memory key conventions:
 --   'implementer'          → shared role memory (accumulated patterns)
---   'implementer#task-{N}' → per-task session memory
---   'reviewer', 'qa', 'planner', 'overseer' → single shared memory per role
+--   'implementer#task-{N}' → per-task session memory (implementer)
+--   'reviewer'             → shared role memory
+--   'reviewer#task-{N}'    → per-task session memory (parallel reviewer scenario)
+--   'qa'                   → shared role memory
+--   'qa#task-{N}'          → per-task session memory (parallel QA scenario)
+--   'planner', 'overseer'  → single shared memory (these roles are never parallelised per task)
+--
+-- assigned_to sentinel values:
+--   'reviewer'             → review task unclaimed (ready for a reviewer agent to pick up)
+--   'reviewer#{N}'         → claimed by reviewer for task N
+--   'qa'                   → qa task unclaimed (ready for a QA agent to pick up)
+--   'qa#{N}'               → claimed by QA agent for task N
 
 PRAGMA journal_mode=WAL;
 PRAGMA foreign_keys=ON;

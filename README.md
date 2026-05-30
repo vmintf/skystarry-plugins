@@ -1,7 +1,10 @@
 [![Listed on ClaudePluginHub](https://www.claudepluginhub.com/badge/vmintf-kanban-agent-plugins-kanban-agent)](https://www.claudepluginhub.com/plugins/vmintf-kanban-agent-plugins-kanban-agent?ref=badge)
+
 # skystarry-plugins
 
 Claude Code plugin marketplace by [minsung@skystarry.xyz](mailto:minsung@skystarry.xyz).
+
+---
 
 ## Adding this marketplace
 
@@ -9,11 +12,17 @@ Claude Code plugin marketplace by [minsung@skystarry.xyz](mailto:minsung@skystar
 /plugin marketplace add https://github.com/vmintf/skystarry-plugins
 ```
 
-## Available plugins
+---
+
+## Available Plugins
 
 ### kanban-agent
 
-SQLite-backed kanban board for multi-agent workflows. Planner, implementer, reviewer, QA, and overseer subagents coordinate via a shared SQLite DB. Parallel implementers each run in isolated git worktrees. QA validates through execution and screenshots only — no source code access.
+Your AI team, finally working together.
+
+`kanban-agent` gives Claude Code a shared project board — a kanban — that multiple AI agents can read and write to at the same time, without stepping on each other. You describe what needs to be built, and a team of specialized agents takes it from plan to done: one thinks, one codes, one reviews, one tests, one watches over the whole thing.
+
+No more "do everything yourself in one long conversation." This is async, parallel, and self-coordinating.
 
 **Install:**
 
@@ -21,31 +30,30 @@ SQLite-backed kanban board for multi-agent workflows. Planner, implementer, revi
 /plugin install kanban-agent@skystarry-plugins
 ```
 
-**What it includes:**
+---
 
-- `/kanban-agent:init` — initialise the board in the current project
-- `/kanban-agent:status` — display the current board state, active worktrees, and agent memory
-- `@kanban-planner` — analyses the project, creates tasks in `draft`, reviews overseer advisories
-- `@kanban-implementer` — claims tasks concurrency-safely, implements in an isolated git worktree, hands off to reviewer
-- `@kanban-reviewer` — reviews code changes in the implementer's worktree, passes to QA or returns to implementer
-- `@kanban-qa` — validates features through execution and screenshots; the only agent that can move tasks to `done`
-- `@kanban-overseer` — diagnoses systemic issues across the full board; read-only, writes advisories only
-- `kanban-core` skill — shared DB path resolution, SQL patterns, concurrency rules, and memory conventions for all agents
-- `PostToolUse` hook — injects board state updates into the active agent's context automatically
+**The agents:**
 
-**Typical workflow:**
+| Agent | What it does |
+|---|---|
+| `@kanban-planner` | Reads the project, breaks work into tasks, keeps the backlog healthy |
+| `@kanban-implementer` | Picks up a task, codes it in its own isolated branch, hands off to review |
+| `@kanban-reviewer` | Reads the code changes, approves or sends back with notes |
+| `@kanban-qa` | Runs the code, checks the output, and is the only one who can call a task done |
+| `@kanban-overseer` | Watches the whole board for patterns — stuck tasks, recurring failures, systemic issues |
 
-```
-/kanban-agent:init          # set up the board
-/kanban-agent:status        # check board state at any time
-@kanban-planner             # plan tasks for the current milestone
-@kanban-implementer         # implement in a dedicated worktree (run multiple in parallel)
-@kanban-reviewer            # review code changes
-@kanban-qa                  # validate through execution; moves task to done
-@kanban-overseer            # diagnose if tasks are cycling or edge cases are accumulating
-```
+Multiple implementers can run at once. Each one works in its own branch so they never conflict.
 
-**Pipeline:**
+---
+
+**Commands:**
+
+- `/kanban-agent:init` — set up the board in your project
+- `/kanban-agent:status` — see what's happening right now
+
+---
+
+**How work moves:**
 
 ```
 draft → in_progress → review → qa → done
@@ -53,23 +61,35 @@ draft → in_progress → review → qa → done
                     need_verify     need_verify
 ```
 
-**Parallel execution (Dynamic Workflows):**
+Tasks don't skip steps. QA has the final word.
 
-Multiple `@kanban-implementer` instances can run simultaneously. Each gets its own git worktree (`.worktrees/task-{id}`) and writes task-scoped memory (`implementer#task-{id}`) alongside shared role memory (`implementer`). The shared SQLite DB coordinates all agents via `BEGIN IMMEDIATE` transactions.
+---
 
-**Supported platforms:**
-- Linux
-- macOS
-- Windows Subsystem for Linux (WSL)
+**A typical session:**
+
+```
+/kanban-agent:init          # one-time setup
+@kanban-planner             # "here's the milestone — break it down"
+@kanban-implementer         # start coding (run several at once)
+@kanban-reviewer            # review what's been built
+@kanban-qa                  # run it and confirm it works
+@kanban-overseer            # if things feel stuck, ask for a diagnosis
+```
+
+---
 
 **Requirements:**
 
-- `sqlite3` available on `PATH`
-- `git` 2.5+ (for worktree support)
+- `sqlite3` on your PATH
+- `git` 2.5 or later
+- Linux, macOS, or WSL
+
+---
 
 ## Author
 
 minsung — [minsung@skystarry.xyz](mailto:minsung@skystarry.xyz)
 
 ## License
+
 MIT

@@ -57,6 +57,131 @@ SQL
 
 If the SELECT returns nothing (another agent grabbed it first), ROLLBACK and pick the next available task from `pending_tasks`.
 
+## Claiming a review or QA task (parallel reviewers / QA agents)
+
+The same CAS pattern applies when multiple reviewers or QA agents run in parallel. The sentinel values are:
+
+- **review:** implementer hands off with `assigned_to = 'reviewer'`; claimant flips to `'reviewer#{task_id}'`
+- **qa:** reviewer hands off with `assigned_to = 'qa'`; claimant flips to `'qa#{task_id}'`
+
+```bash
+# Reviewer claim
+sqlite3 $KANBAN_DB <<'SQL'
+BEGIN IMMEDIATE;
+
+SELECT id FROM tasks
+WHERE id = {task_id} AND column = 'review' AND assigned_to = 'reviewer';
+
+UPDATE tasks
+SET assigned_to = 'reviewer#{task_id}'
+WHERE id = {task_id} AND column = 'review' AND assigned_to = 'reviewer';
+
+COMMIT;
+SQL
+
+# QA claim
+sqlite3 $KANBAN_DB <<'SQL'
+BEGIN IMMEDIATE;
+
+SELECT id FROM tasks
+WHERE id = {task_id} AND column = 'qa' AND assigned_to = 'qa';
+
+UPDATE tasks
+SET assigned_to = 'qa#{task_id}'
+WHERE id = {task_id} AND column = 'qa' AND assigned_to = 'qa';
+
+COMMIT;
+SQL
+```
+
+If the SELECT returns nothing, pick the next task.
+
+**Handoff sentinel values to use when moving tasks:**
+
+```sql
+-- Implementer → Reviewer
+SET column = 'review', assigned_to = 'reviewer'
+
+-- Reviewer → QA (passing)
+SET column = 'qa', assigned_to = 'qa'
+
+-- QA → Done (sets final assigned_to; preserves audit trail)
+SET column = 'done', assigned_to = 'qa#{task_id}'
+```
+
+## Dynamic workflow patterns
+
+When a workflow script orchestrates parallel agents, follow these rules to avoid the most common failure modes:
+
+### 1. Column count queries — never filter by `assigned_to`
+
+Use column alone to count work in each stage:
+
+```javascript
+// WRONG — breaks once an agent claims the task (assigned_to is no longer null)
+const count = await agent(`sqlite3 ... "SELECT COUNT(*) FROM tasks
+  WHERE column='review' AND (assigned_to IS NULL OR assigned_to = '')"`)
+
+// CORRECT
+const count = await agent(`sqlite3 ... "SELECT COUNT(*) FROM tasks WHERE column='review'"`)
+```
+
+`assigned_to` persists across column transitions and is NOT a reliable "unclaimed" signal outside of a CAS claim statement.
+
+**Exception:** when querying unclaimed tasks to build an assignment list, use the role sentinel explicitly:
+
+```javascript
+// Querying unclaimed QA tasks for 1:1 assignment
+const tasks = await agent(`sqlite3 -json ... "SELECT id, title FROM tasks
+  WHERE column='qa' AND assigned_to='qa' ORDER BY priority DESC"`)
+```
+
+### 2. Parallel agents — always assign task IDs from the orchestrator
+
+Never spawn N agents and tell them to "pick a task themselves" — they will all pick the same one.
+
+```javascript
+// WRONG — race condition: multiple agents select the same task
+await parallel(Array.from({length: N}, () => () =>
+  agent(`Pick any task from the qa column and validate it.`)
+))
+
+// CORRECT — orchestrator fetches list first, each agent gets its own ID
+const raw = await agent(`sqlite3 -json $KANBAN_DB "SELECT id, title FROM tasks
+  WHERE column='qa' AND assigned_to='qa' ORDER BY priority DESC"`)
+const tasks = JSON.parse(raw.match(/\[[\s\S]*\]/)?.[0] ?? '[]')
+await parallel(tasks.map(task => () =>
+  agent(`Validate task #${task.id}: ${task.title}. Only touch task #${task.id}.`)
+))
+```
+
+Each agent must still run the CAS claim as a second layer of safety.
+
+### 3. QA agents — do not set up worktrees
+
+QA validates an already-implemented worktree. It does not clone, branch, or create one. The worktree path is in `review_note`. Explicitly tell QA agents:
+
+```
+DO NOT create or set up a worktree.
+The code is already checked out. The worktree path is in the task's review_note field.
+Your job is to start the application from that path and validate behaviour.
+```
+
+### 4. Structured output (`schema`) — only for reasoning agents
+
+The `schema` option forces the agent to call `StructuredOutput`. Agents that only run shell commands and print text will fail:
+
+```javascript
+// WRONG — a shell-command agent will not call StructuredOutput
+const result = await agent(`sqlite3 -json $DB "SELECT ..."`, { schema: MY_SCHEMA })
+
+// CORRECT — receive as text, parse in the workflow script
+const raw = await agent(`sqlite3 -json $DB "SELECT ..." && echo DONE`)
+const rows = JSON.parse(raw.match(/\[[\s\S]*\]/)?.[0] ?? '[]')
+```
+
+Use `schema` only when the agent performs analysis or judgment that produces a structured result.
+
 ## Reading the board
 
 ```bash
@@ -99,7 +224,13 @@ Memory keys follow a two-tier pattern:
 |---|---|
 | `'implementer'` | Shared role memory — accumulated patterns across all sessions |
 | `'implementer#task-{N}'` | Per-task session memory — what happened in a specific worktree |
-| `'reviewer'`, `'qa'`, `'planner'`, `'overseer'` | Single shared memory per role |
+| `'reviewer'` | Shared role memory — accumulated review patterns |
+| `'reviewer#task-{N}'` | Per-task session memory — written when reviewer runs in parallel (task_id assigned by orchestrator) |
+| `'qa'` | Shared role memory — accumulated QA patterns |
+| `'qa#task-{N}'` | Per-task session memory — written when QA runs in parallel (task_id assigned by orchestrator) |
+| `'planner'`, `'overseer'` | Single shared memory — these roles are never parallelised per task |
+
+**Rule:** When invoked with a specific `task_id` (parallel orchestration), write *both* the per-task key (`{role}#task-{N}`) and the shared key (`{role}`). When invoked without a task_id, write only the shared key.
 
 ### Writing memory
 
@@ -111,10 +242,10 @@ sqlite3 $KANBAN_DB "
   ON CONFLICT(agent_name) DO UPDATE SET summary = excluded.summary, updated_at = CURRENT_TIMESTAMP;
 "
 
-# Task-scoped session memory (implementer only)
+# Task-scoped session memory (when invoked with a specific task_id — implementer, reviewer, qa)
 sqlite3 $KANBAN_DB "
   INSERT INTO agent_memory (agent_name, summary)
-  VALUES ('implementer#task-{N}', '{decisions made, edge cases hit, notes for reviewer}')
+  VALUES ('{role}#task-{N}', '{decisions made, edge cases hit, notes for next agent}')
   ON CONFLICT(agent_name) DO UPDATE SET summary = excluded.summary, updated_at = CURRENT_TIMESTAMP;
 "
 ```
@@ -128,8 +259,8 @@ sqlite3 $KANBAN_DB "SELECT summary FROM agent_memory WHERE agent_name = '{agent_
 # All role memories (overseer / cross-agent context)
 sqlite3 $KANBAN_DB "SELECT agent_name, summary, updated_at FROM agent_memory WHERE agent_name NOT LIKE '%#%' ORDER BY updated_at DESC;"
 
-# All implementer task sessions (overseer diagnosis)
-sqlite3 $KANBAN_DB "SELECT agent_name, summary, updated_at FROM agent_memory WHERE agent_name LIKE 'implementer#%' ORDER BY updated_at DESC LIMIT 20;"
+# All per-task session memories across all roles (overseer diagnosis)
+sqlite3 $KANBAN_DB "SELECT agent_name, summary, updated_at FROM agent_memory WHERE agent_name LIKE '%#%' ORDER BY updated_at DESC LIMIT 20;"
 ```
 
 ## Comments

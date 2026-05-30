@@ -1,7 +1,7 @@
 {
   "name": "kanban-agent",
-  "version": "1.0.0",
-  "description": "SQLite-backed kanban board for multi-agent workflows. Parallel implementers each run in isolated git worktrees. Planner, implementer, reviewer, QA, and overseer coordinate via shared DB. QA validates through execution and screenshots only.",
+  "version": "1.0.1",
+  "description": "Give your Claude agents a shared board to work from. Planner breaks down the milestone, implementers build in isolated git worktrees, reviewer checks the diff, QA runs it and confirms it works. Everyone coordinates through one SQLite database — no manual handoffs.",
   "author": {
     "name": "minsung",
     "email": "minsung@skystarry.xyz"

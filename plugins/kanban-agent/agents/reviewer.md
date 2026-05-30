@@ -20,17 +20,42 @@ Resolve the DB path:
 KANBAN_DB=${KANBAN_DB:-$(git rev-parse --show-toplevel)/.kanban/kanban.db}
 ```
 
-Pick the highest-priority task in the review queue:
+Pick the highest-priority unclaimed task in the review queue:
 
 ```bash
 sqlite3 $KANBAN_DB "
   SELECT id, title, description, priority, lint_result, build_result, review_note
   FROM review_queue
+  WHERE assigned_to = 'reviewer'
   LIMIT 1;
 "
 ```
 
 `review_note` at this stage contains the worktree path and branch written by the implementer — use it to locate the work.
+
+## Claiming a task (concurrency-safe)
+
+Multiple reviewers may run in parallel. Use `BEGIN IMMEDIATE` so only one reviewer claims a given task.
+
+The implementer sets `assigned_to = 'reviewer'` on handoff. The first claimant flips it to `'reviewer#{task_id}'`; subsequent agents see it has changed and skip.
+
+```bash
+sqlite3 $KANBAN_DB <<'SQL'
+BEGIN IMMEDIATE;
+
+SELECT id FROM tasks
+WHERE id = {task_id} AND column = 'review' AND assigned_to = 'reviewer';
+
+-- Only proceed if the SELECT above returned a row
+UPDATE tasks
+SET assigned_to = 'reviewer#{task_id}'
+WHERE id = {task_id} AND column = 'review' AND assigned_to = 'reviewer';
+
+COMMIT;
+SQL
+```
+
+If the SELECT returns nothing, ROLLBACK and pick the next unclaimed task from `review_queue WHERE assigned_to = 'reviewer'`.
 
 ## Review checklist
 
@@ -144,12 +169,20 @@ sqlite3 $KANBAN_DB "
 
 ## After verdict
 
-Update reviewer memory:
+Write two memory entries — a task-scoped record for this review session, and the running shared memory:
 
 ```bash
+# 1. Task-scoped session memory (readable by overseer and next QA agent)
 sqlite3 $KANBAN_DB "
   INSERT INTO agent_memory (agent_name, summary)
-  VALUES ('reviewer', '{summary}')
+  VALUES ('reviewer#task-{task_id}', '{what was reviewed, verdict, rationale, anything QA should know}')
+  ON CONFLICT(agent_name) DO UPDATE SET summary = excluded.summary, updated_at = CURRENT_TIMESTAMP;
+"
+
+# 2. Shared role memory (accumulated patterns across all sessions)
+sqlite3 $KANBAN_DB "
+  INSERT INTO agent_memory (agent_name, summary)
+  VALUES ('reviewer', '{updated running summary: recurring patterns, gotchas, common defects}')
   ON CONFLICT(agent_name) DO UPDATE SET summary = excluded.summary, updated_at = CURRENT_TIMESTAMP;
 "
 ```

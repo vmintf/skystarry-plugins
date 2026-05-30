@@ -82,10 +82,10 @@ FROM agent_memory
 WHERE agent_name NOT LIKE '%#%'
 ORDER BY updated_at DESC;"
 
-echo "" && echo "=== AGENT MEMORY (implementer sessions, last 10) ===" && sqlite3 -column -header $KANBAN_DB "
+echo "" && echo "=== AGENT MEMORY (per-task sessions, last 10) ===" && sqlite3 -column -header $KANBAN_DB "
 SELECT agent_name, substr(summary, 1, 120) AS summary, updated_at
 FROM agent_memory
-WHERE agent_name LIKE 'implementer#%'
+WHERE agent_name LIKE '%#%'
 ORDER BY updated_at DESC
 LIMIT 10;"
 ```

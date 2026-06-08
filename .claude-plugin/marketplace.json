@@ -9,7 +9,7 @@
       "name": "kanban-agent",
       "source": "./plugins/kanban-agent",
       "description": "A shared kanban board that lets multiple Claude agents plan, implement, review, and ship work in parallel — without you holding everything together.",
-      "version": "1.0.1",
+      "version": "1.1.0",
       "author": {
         "name": "minsung",
         "email": "minsung@skystarry.xyz"

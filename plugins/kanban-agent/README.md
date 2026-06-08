@@ -8,7 +8,9 @@ A kanban board for Claude Code — where your AI agents actually work as a team.
 
 Most AI coding sessions are one-on-one: you ask, Claude does, repeat. That works for small things. For anything bigger — a feature, a refactor, a whole milestone — it breaks down. You end up managing context, re-explaining decisions, and serializing work that could happen in parallel.
 
-`kanban-agent` is a different approach. It gives Claude Code a shared board backed by a local SQLite database. Multiple agents — planner, implementer, reviewer, QA, overseer — coordinate through that board. Each one has a defined role and a clear boundary. Work flows from task to task, stage to stage, without you having to hold it all together.
+`kanban-agent` is a different approach. It gives Claude Code a shared board backed by a local SQLite database. Multiple agents — planner, implementer, reviewer, QA, overseer — coordinate through that board. Each one has a defined role and a clear boundary. Work flows through the pipeline without you having to hold it all together.
+
+The core unit is a **task group**: a set of related tasks that share one git worktree, one branch, one review, and one QA session. The planner creates groups; implementers claim and build them; reviewers and QA validate them as a unit. Groups keep related work together without creating cross-agent dependencies.
 
 You set the direction. The agents handle the execution.
 
@@ -42,27 +44,27 @@ This creates a `.kanban/kanban.db` file in your project root and seeds the board
 
 ### `@kanban-planner`
 
-The planner thinks before anyone codes. It reads your project, understands what exists, and breaks the milestone into tasks that are actually implementable — specific enough to act on, independent enough to parallelize. It also watches for strategic advisories from the overseer and decides whether to act on them.
+The planner thinks before anyone codes. It reads your project, understands what exists, and breaks the milestone into task groups — each group is a set of related tasks that can be implemented together in one worktree. Groups keep related work coherent; tasks within a group are ordered by priority for the implementer. It also watches for strategic advisories from the overseer and decides whether to act on them.
 
-Invoke when: you have a new feature or milestone to plan, the task queue is empty, or an implementer has surfaced a blocker that needs replanning.
+Invoke when: you have a new feature or milestone to plan, the draft queue is empty, or an implementer has surfaced a blocker that needs replanning.
 
 ### `@kanban-implementer`
 
-The implementer claims one task, creates an isolated git worktree for it, writes the code, runs lint and build checks, then hands off to the reviewer. It never touches another agent's work. You can run several implementers at once — each gets its own branch, its own task, its own context.
+The implementer claims a task group, creates one shared git worktree for it, implements all tasks in the group sequentially, runs lint and build checks across the whole group, then hands off to the reviewer. It never touches another group's worktree. You can run several implementers at once — each gets its own branch, its own group, its own context.
 
-Invoke when: there are tasks in draft. Run multiple instances in parallel to move faster.
+Invoke when: there are groups in draft. Run multiple instances in parallel to move faster.
 
 ### `@kanban-reviewer`
 
-The reviewer reads the code diff in the implementer's worktree. It checks correctness, consistency with the rest of the project, and whether the acceptance criteria are met. If it passes, the task moves to QA. If not, it goes back to the implementer with specific notes.
+The reviewer reads the combined code diff across the entire group's worktree. It checks correctness, consistency with the rest of the project, and whether every task's acceptance criteria are met. If the whole group passes, it moves to QA. If not, the entire group goes back to the implementer with specific notes.
 
-Invoke when: tasks are sitting in the review column.
+Invoke when: groups are sitting in the review column.
 
 ### `@kanban-qa`
 
-QA does one thing: run the code and see if it works. It doesn't read source files. It starts the application, interacts with it, takes screenshots if needed, and validates the behavior against the task description. It's the only agent that can move a task to `done`.
+QA does one thing: run the code and see if it works. It doesn't read source files. It validates the whole group in a single session — starts the application, interacts with it, takes screenshots if needed, and checks every task's acceptance criteria. It's the only agent that can move tasks to `done`.
 
-Invoke when: tasks are in the QA column and ready to validate.
+Invoke when: groups are in the QA column and ready to validate.
 
 ### `@kanban-overseer`
 
@@ -88,9 +90,9 @@ Tasks move forward through defined stages. They can go back to `error` if review
 
 The most powerful thing about this setup: multiple `@kanban-implementer` instances can run at the same time.
 
-Each one claims its own task using a database transaction that prevents conflicts. Each one works in its own git worktree (`.worktrees/task-{id}`). Each one builds up its own session memory. They don't know about each other — they just work.
+Each one claims its own group using a database transaction that prevents conflicts. Each one works in its own git worktree (`.worktrees/group-{id}`). Each one builds up its own session memory. They don't know about each other — they just work.
 
-When you have a backlog of independent tasks, you don't have to serialize them. Start three implementers. Let them run.
+When you have a backlog of independent groups, you don't have to serialize them. Start three implementers. Let them run.
 
 ---
 

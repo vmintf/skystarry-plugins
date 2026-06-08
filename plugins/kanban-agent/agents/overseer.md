@@ -43,7 +43,7 @@ SELECT agent_name, summary, updated_at FROM agent_memory
 WHERE agent_name NOT LIKE '%#%'
 ORDER BY updated_at DESC;
 
--- Per-task session memories across all roles (implementer, reviewer, qa — recent first)
+-- Per-group session memories across all roles (implementer, reviewer, qa — recent first)
 SELECT agent_name, summary, updated_at FROM agent_memory
 WHERE agent_name LIKE '%#%'
 ORDER BY updated_at DESC
@@ -53,11 +53,31 @@ LIMIT 20;
 Then read the full board:
 
 ```sql
--- All tasks
-SELECT id, title, priority, column, assigned_to, depends_on,
+-- Task groups and their member task counts
+SELECT g.id, g.name, g.description,
+       COUNT(t.id) AS task_count,
+       GROUP_CONCAT(DISTINCT t.column) AS columns_present
+FROM task_groups g
+LEFT JOIN tasks t ON t.group_id = g.id
+GROUP BY g.id, g.name, g.description
+ORDER BY g.id;
+
+-- All tasks (grouped and ungrouped)
+SELECT id, group_id, title, priority, column, assigned_to, depends_on,
        lint_result, build_result, review_note,
        created_at, updated_at
 FROM tasks ORDER BY priority DESC, updated_at DESC;
+
+-- Group pipeline snapshot (where are groups right now)
+SELECT 'pending'  AS stage, group_id, group_name, task_count, assigned_to FROM pending_groups
+UNION ALL
+SELECT 'review',  group_id, group_name, task_count, assigned_to FROM review_groups
+UNION ALL
+SELECT 'qa',      group_id, group_name, task_count, assigned_to FROM qa_groups;
+
+-- Tasks needing attention (error / need_verify — all tasks, grouped or not)
+SELECT id, group_id, title, column, review_note, priority, updated_at
+FROM needs_attention ORDER BY priority DESC;
 
 -- All edge cases
 SELECT id, title, description, priority, status, related_task_id,
@@ -116,24 +136,40 @@ VALUES (
 );
 ```
 
-### 1. Cycling tasks
+### 1. Cycling tasks and groups
 
 Find tasks that have moved between `error` and `draft` more than once:
 
 ```sql
-SELECT record_id, COUNT(*) as cycle_count
+-- Per-task cycling (covers both grouped and ungrouped tasks)
+SELECT record_id AS task_id, COUNT(*) AS cycle_count
 FROM change_log
 WHERE field = 'column' AND (old_value = 'error' OR new_value = 'error')
 GROUP BY record_id
 HAVING cycle_count > 2;
 ```
 
-For each cycling task, read its full comment history. Then ask:
+For grouped tasks, aggregate cycles at the group level to identify groups that are structurally stuck:
+
+```sql
+-- Per-group cycling (a group whose tasks all cycle together repeatedly)
+SELECT t.group_id, g.name AS group_name, COUNT(cl.record_id) AS total_error_transitions
+FROM change_log cl
+JOIN tasks t ON t.id = cl.record_id
+JOIN task_groups g ON g.id = t.group_id
+WHERE cl.field = 'column' AND (cl.old_value = 'error' OR cl.new_value = 'error')
+GROUP BY t.group_id, g.name
+HAVING total_error_transitions > 4
+ORDER BY total_error_transitions DESC;
+```
+
+For each cycling task or group, read its full comment history. Then ask:
 - Is the acceptance criteria ambiguous or underspecified?
 - Is there a false assumption baked into the task description?
 - Is the same root cause appearing under different symptoms each cycle?
+- For groups: does the group span too many concerns? Should it be split?
 
-Write a task-scoped advisory with the diagnosis and a concrete recommendation for the planner.
+Write a task-scoped advisory for individual cycling tasks. For cycling groups, write a board-scoped advisory — a group cycling is a structural signal, not an individual implementation failure.
 
 ### 2. Edge case root cause clusters
 
@@ -180,11 +216,17 @@ For each affected draft task, write a task-scoped advisory noting the impact. Do
 
 ### 6. Dependency bottlenecks
 
+`depends_on` between tasks in the same group is not tracked here — intra-group ordering is handled by the implementer via priority. This query covers **cross-group** and **ungrouped** dependencies only:
+
 ```sql
-SELECT id, title, column, depends_on FROM tasks WHERE depends_on IS NOT NULL AND column != 'done';
+SELECT id, group_id, title, column, depends_on
+FROM tasks
+WHERE depends_on IS NOT NULL AND column != 'done';
 ```
 
-If a single non-done task is blocking 3 or more others transitively, write a task-scoped advisory with the bottleneck assessment and a specific suggestion (split, reprioritise, or resolve external blocker first).
+If a single non-done task (or non-done group) is blocking 3 or more others transitively, write a task-scoped advisory with the bottleneck assessment and a specific suggestion (split, reprioritise, or resolve external blocker first).
+
+For blocked groups specifically, check whether `pending_groups` is shorter than you would expect given the number of groups in draft state — blocked groups are filtered out of `pending_groups` silently and do not appear in `needs_attention`.
 
 ## Output: update own memory only
 

@@ -1,7 +1,7 @@
 {
   "name": "kanban-agent",
-  "version": "1.0.1",
-  "description": "Give your Claude agents a shared board to work from. Planner breaks down the milestone, implementers build in isolated git worktrees, reviewer checks the diff, QA runs it and confirms it works. Everyone coordinates through one SQLite database — no manual handoffs.",
+  "version": "1.1.0",
+  "description": "Give your Claude agents a shared board to work from. Planner groups related tasks into functional units, implementers build each group in an isolated git worktree, reviewer checks the combined diff, QA runs it and confirms it works. Everyone coordinates through one SQLite database — no manual handoffs.",
   "author": {
     "name": "minsung",
     "email": "minsung@skystarry.xyz"

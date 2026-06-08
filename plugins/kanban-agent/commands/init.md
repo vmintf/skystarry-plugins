@@ -30,20 +30,25 @@ sqlite3 .kanban/kanban.db < "(Kanban DB Path)/db/schema.sql"
 
 ```bash
 sqlite3 .kanban/kanban.db <<'SQL'
--- Example tasks (highest priority first)
-INSERT INTO tasks (title, description, priority, column) VALUES
-  ('Define project requirements', 'List all functional requirements before implementation begins.', 10, 'draft'),
-  ('Set up CI pipeline',          'Configure GitHub Actions with lint + test steps.',              7,  'draft'),
-  ('Write unit tests',            'Cover core logic with at least 80% branch coverage.',           5,  'draft');
+-- Example task groups
+INSERT INTO task_groups (name, description) VALUES
+  ('project-setup',  'Initial scaffolding: requirements, CI, and test baseline.'),
+  ('core-feature',   'Core business logic implementation.');
+
+-- Example tasks assigned to groups
+INSERT INTO tasks (title, description, priority, column, group_id) VALUES
+  ('Define project requirements', 'List all functional requirements before implementation begins.', 10, 'draft', 1),
+  ('Set up CI pipeline',          'Configure GitHub Actions with lint + test steps.',              7,  'draft', 1),
+  ('Write unit tests',            'Cover core logic with at least 80% branch coverage.',           5,  'draft', 2);
 
 -- Example edge case (already resolved, serves as reference)
 INSERT INTO edge_cases (title, description, priority, status, resolution) VALUES
   (
-    'Concurrent task grab race condition',
-    'Two implementer agents tried to move the same draft task to in_progress simultaneously.',
+    'Concurrent group grab race condition',
+    'Two implementer agents tried to move the same draft group to in_progress simultaneously.',
     8,
     'resolved',
-    'Wrapped the SELECT + UPDATE in BEGIN IMMEDIATE transaction. First writer wins; second reads the updated column and skips.'
+    'Wrapped the SELECT + UPDATE in BEGIN IMMEDIATE transaction. First writer wins; second sees count=0 and picks the next group.'
   );
 
 -- Seed agent memory stubs

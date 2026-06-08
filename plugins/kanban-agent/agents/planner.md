@@ -46,28 +46,51 @@ Your sole responsibility is to analyse the project, define well-scoped tasks, an
    SELECT id, title, priority, depends_on, blocking_status FROM blocked_tasks;
    ```
 
-## Creating tasks
+## Creating task groups
 
-Break work into independently implementable units. Each task should be completable in a single agent session where possible.
+Tasks are always assigned to a **task group**. A group is the unit of flow: one worktree, one review, one QA session. Group tasks that are part of the same feature or functional area so an implementer can work on them together without context-switching.
+
+### Step 1 — Create the group
 
 ```sql
-INSERT INTO tasks (title, description, priority, column, depends_on)
+INSERT INTO task_groups (name, description)
+VALUES (
+  '{short-kebab-case-label}',           -- e.g. 'auth-feature', 'dashboard-charts'
+  '{what this group implements and why}'
+);
+-- Note the new group id (last_insert_rowid())
+```
+
+### Step 2 — Create tasks in the group
+
+Break work into independently understandable units. Each task should be clear enough for an implementer to start without asking questions.
+
+```sql
+INSERT INTO tasks (title, description, priority, column, group_id, depends_on)
 VALUES (
   '{clear, action-oriented title}',
-  '{what needs to be done and why — enough context for an implementer to start without asking questions}',
+  '{what needs to be done and why — include acceptance criteria}',
   {priority},
   'draft',
-  {NULL or 'id1,id2'}  -- comma-separated IDs of tasks that must be done first
+  {group_id},
+  {NULL or 'id1,id2'}
 );
 ```
 
-Guidelines:
+### Grouping guidelines
+
+- Group tasks by feature or functional area — tasks that touch the same files or depend on shared context belong together
+- Keep groups to 2–6 tasks; larger groups are harder to review atomically
+- A single-task group is valid when a task is large, self-contained, or has no natural peers
+- Intra-group dependencies (task A must be done before task B in the same group) are handled by the implementer via priority order — do **not** use `depends_on` for intra-group ordering
+- Use `depends_on` only for cross-group dependencies (this group cannot start until another group completes a task)
+
+### Task guidelines
+
 - Title should complete the sentence "This task will …"
 - Description should include acceptance criteria when relevant
 - Set priority honestly; do not mark everything as critical
 - One concern per task — if you find yourself writing "and also", split it
-- Use `depends_on` when a task cannot start until another is done — the implementer's `pending_tasks` view automatically excludes blocked tasks
-- Do not over-specify dependencies; only add them when the ordering genuinely matters
 
 ## Priority scale
 
